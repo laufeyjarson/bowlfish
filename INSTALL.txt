@@ -1,0 +1,628 @@
+################################################################################
+# BowlFish installation guide                                                  #
+#                                                                              #
+# You can find the original HTML document at:                                  #
+# http://www.kernel-panic.it/software/bowlfish/docs.html                       #
+################################################################################
+
+  Table of contents
+
+    1. Installation guide
+          1.1 Pre-installation checklist
+                1.1.1 Downloading files
+                1.1.2 Building a custom kernel
+                1.1.3 Required information
+          1.2. Performing the install
+                1.2.1 Network configuration
+                1.2.2 Services and users
+                1.2.3 Disk setup and file sets
+          1.3. Post-installation customization
+          1.4. Installing on a vnode disk
+    2. Filesystem layout
+    3. Frequently Asked Questions
+          3.1. How do I change the size of the memory-based /tmp file system?
+          3.2. Is there a limit to how big the /tmp filesystem can be?
+          3.3. How do I install packages on a BowlFish system?
+
+
+1. Installation guide
+---------------------
+
+The BowlFish installation procedure is very similar to the standard, text-based,
+OpenBSD installation: this should make it look more friendly to OpenBSD
+aficionados and allow you to almost fully configure the system at installation
+time.
+
+It will install a stripped-down version of OpenBSD onto a Compact Flash card,
+attached through a USB or IDE adapter, tailored to run on embedded systems like
+Soekris, WRAP or ALIX boards.
+
+1.1 Pre-installation checklist
+------------------------------
+
+Before starting the install, you need to perform a few preliminary steps:
+
+   1. download the required files;
+   2. build a custom kernel (optional);
+   3. gather all the necessary information about the system.
+
+Let's see these steps in detail.
+
+1.1.1 Downloading files
+-----------------------
+
+Once you have downloaded and unpacked the BowlFish tarball,
+
++------------------------------------------------------------------------------+
+| $ tar -zxvf bowlfish-2.1.tgz                                                 |
++------------------------------------------------------------------------------+
+
+you also need to download the baseXX.tgz and etcXX.tgz file sets from the
+current OpenBSD release. Putting them in the installation directory will allow
+BowlFish to find them automatically, without bothering you asking for their
+path.
+
++------------------------------------------------------------------------------+
+| $ cd bowlfish-2.1                                                            |
+| $ ftp -V ftp://ftp.openbsd.org/pub/OpenBSD/4.9/i386/etc49.tgz                |
+| 100% |**************************************************|   507 KB    00:00  |
+| $ ftp -V ftp://ftp.openbsd.org/pub/OpenBSD/4.9/i386/base49.tgz               |
+| 100% |**************************************************| 53505 KB    00:49  |
++------------------------------------------------------------------------------+
+
+1.1.2 Building a custom kernel
+------------------------------
+
+Since decent-size CF cards have become pretty cheap nowadays, it's no more
+necessary to compile a custom kernel to save a few MBs of disk space; so I would
+recommend using the standard bsd kernel.
+Anyway, if you prefer building a custom kernel, to make it smaller and faster at
+boot time, the BowlFish tarball contains the kernel configuration files for
+various systems (borrowed from flashdist):
+
+NET45xx
+    kernel configuration file for soekris net4501, net4511, net4521, and net4526
+    boards;
+GEODE
+    kernel configuration file for soekris net4801 and net5501 boards and PC
+    Engines WRAP and ALIX boards;
+
+Copy the file appropriate to your hardware in /usr/src/sys/arch/i386/conf/ (if
+this directory doesn't exist, you need to download the src.tar.gz and sys.tar.gz
+files and extract them in /usr/src/), then config(8) and build the kernel; for
+instance, if you're installing BowlFish on a Soekris Net4521, type:
+
++------------------------------------------------------------------------------+
+| $ cp NET45xx /usr/src/sys/arch/i386/conf/                                    |
+| $ cd /usr/src/sys/arch/i386/conf/                                            |
+| $ config NET45xx                                                             |
+| Don't forget to run "make depend"                                            |
+| $ cd ../compile/NET45xx                                                      |
+| $ make clean && make depend && make                                          |
+| [...]                                                                        |
++------------------------------------------------------------------------------+
+
+You will find your fresh new kernel in /usr/src/sys/arch/i386/compile/NET45xx/.
+
+A brief note about WRAP and ALIX boards: their default console baud rate is
+38400 instead of 19200. Consequently, you should modify the console speed in
+the GEODE file:
+
++- GEODE ----------------------------------------------------------------------+
+|                                                                              |
+| option		CONSPEED=38400                                         |
++------------------------------------------------------------------------------+
+
+1.1.3 Required information
+--------------------------
+
+Before you start the install, you will also want to know the following items:
+
+   1. Disk geometry: BowlFish will prompt you for the number of sectors/track,
+      tracks/cylinder (heads) and cylinders of the disk. In any case, it will
+      try to guess the correct values and prompt them as defaults (this may not
+      work if you're installing on a vnode disk).
+      Anyway, if you want to be sure about these values, you can retrieve them
+      by connecting to the system with a null-modem cable, plugging the flash in
+      and powering the system up. You will get an output like:
+
+      +------------------------------------------------------------------------+
+      | # cu -s 19200 -l cua00                                                 |
+      |                                                                        |
+      | comBIOS ver. 1.26a  20040819  Copyright (C) 2000-2004 Soekris Engineer |
+      |                                                                        |
+      | net45xx                                                                |
+      |                                                                        |
+      | 0064 Mbyte Memory                        CPU 80486 133 Mhz             |
+      |                                                                        |
+      | Pri Mas  SanDisk SDCFB-64                LBA 490-8-32  62 Mbyte        |
+      | [...]                                                                  |
+      +------------------------------------------------------------------------+
+
+      The values 490-8-32 (named C-H-S values, Cylinders-Heads-Sectors) are what
+      we're looking for: 490 cylinders, 8 heads and 32 sectors/track.
+   2. Machine name;
+   3. Network settings: if you don't use DHCP, you will be prompted for:
+          * Domain name;
+          * Domain name server(s) (DNS) address;
+          * IP address and subnet mask for each NIC;
+          * Gateway address;
+   4. Software to install: by default, BowlFish will build a system that should
+      meet most needs; anyway, it is very easy to customize.
+      The file install.files contains the list of binaries and configuration
+      files that will be extracted from the baseXX.tgz and etcXX.tgz file sets.
+      The list is divided into two groups:
+          * [base], containing the base OpenBSD system files to extract, and
+          * [etc], containing the configuration files to extract in /etc.
+      Feel free to edit it to remove anything you don't need or to add anything
+      I may have forgotten. For instance, to install Apache, just add the
+      following lines to install.files (this won't copy icons and manual, saving
+      a little space):
+
+      +- install.files --------------------------------------------------------+
+      |                                                                        |
+      | [ base ]                                                               |
+      |                                                                        |
+      | [...]                                                                  |
+      | ./usr/bin/htpasswd                                                     |
+      | ./usr/sbin/apachectl                                                   |
+      | ./usr/sbin/httpd                                                       |
+      | ./usr/sbin/logresolve                                                  |
+      | ./usr/sbin/rotatelogs                                                  |
+      | ./var/www/[ilu]*                                                       |
+      |                                                                        |
+      | [ etc ]                                                                |
+      |                                                                        |
+      | [...]                                                                  |
+      | ./var/www/c*                                                           |
+      | ./var/www/htdocs/*                                                     |
+      +------------------------------------------------------------------------+
+
+      Like the standard OpenBSD install script, BowlFish also lets you select a
+      custom file set (named site.tgz), to allow you to add to and/or override
+      the files installed in the "normal" sets. The site.tgz file set must be,
+      like the other file sets, a gzip(1) compressed tar(1) archive rooted in
+      "/" and is un-tarred with the options "zxpf". This set will be installed
+      last.
+
+1.2 Performing the install
+--------------------------
+
+We're now ready to start the install! Just run the install script (you must be
+root to perform the installation):
+
++------------------------------------------------------------------------------+
+| # ./install                                                                  |
+|                                                                              |
+| Welcome to the BowlFish installation program.                                |
+|                                                                              |
+| This program will help you install OpenBSD in a simple and rational way.     |
+| Default answers are shown in []'s and are selected by pressing RETURN.       |
+| At any time you can exit this program by pressing Control-C.                 |
++------------------------------------------------------------------------------+
+
+1.2.1 Network configuration
+---------------------------
+
+You must now set the system name
+
++------------------------------------------------------------------------------+
+| System hostname? (short form, e.g. 'foo') net4521                            |
++------------------------------------------------------------------------------+
+
+Since you're not installing directly on the target system, BowlFish won't be
+able to guess the available network interfaces, so you will need to provide the
+names yourself (usually ethernet interfaces are sisX). For example, my net4521
+system has two ethernet NICs and one PCMCIA wireless card:
+
++------------------------------------------------------------------------------+
+| Which network interface do you wish to configure? (or 'done') sis0           |
+| Symbolic (host) name for sis0? [net4521] net4521-int                         |
+| IPv4 address for sis0? (or 'dhcp' or 'none') [dhcp] 172.16.0.254             |
+| Netmask? [255.255.255.0] Enter                                               |
+| Which network interface do you wish to configure? (or 'done') sis1           |
+| Symbolic (host) name for sis1? [net4521] net4521-ext                         |
+| IPv4 address for sis1? (or 'dhcp' or 'none') [dhcp] 1.2.3.4                  |
+| Netmask? [255.255.255.0] Enter                                               |
+| Which network interface do you wish to configure? (or 'done') wi0            |
+| Symbolic (host) name for wi0? [net4521] net4521-wi                           |
+| IPv4 address for wi0? (or 'dhcp' or 'none') [dhcp] 192.168.0.254             |
+| Netmask? [255.255.255.0] Enter                                               |
+| Which interface do you wish to initialize? (e.g. sis0, or 'done') done       |
+| Default IPv4 route? (IPv4 address, 'dhcp' or 'none') 1.2.3.1                 |
+| DNS domain name? (e.g. 'bar'com') [my.domain] kernel-panic.it                |
+| DNS nameservers? (IP address list or 'none') [none] 1.2.3.5                  |
++------------------------------------------------------------------------------+
+
+1.2.2 Services and users
+------------------------
+
+The next step is to set the password for the root account:
+
++------------------------------------------------------------------------------+
+| Password for root account? (will not echo) pAssWOrd                          |
+| Password for root account? (again) pAssWOrd                                  |
++------------------------------------------------------------------------------+
+
+Next are a few questions about which services to start by default; the second
+question allows you to enable OpenNTPD at boot and to specify a time server (or
+"default" for pool.ntp.org):
+
++------------------------------------------------------------------------------+
+| Start sshd(8) by default? [yes] Enter                                        |
+| Start ntpd(8) by default? [no] yes                                           |
+| NTP server? (or 'none' or 'default') [default] Enter                         |
++------------------------------------------------------------------------------+
+
+Since the filesystem will be read-only, you may want to send logs to a remote
+server. Otherwise, the system will log to ramdisk and logs will be lost on
+reboot.
+
++------------------------------------------------------------------------------+
+| Central syslog server? ('none' for ramdisk logging) [none] myloghost         |
++------------------------------------------------------------------------------+
+
+You are then given the opportunity to create a user for system maintenance; this
+user will be a member of the wheel group in order to be able to su(1) to root.
+
++------------------------------------------------------------------------------+
+| Setup a user? (enter a lower-case loginname, or 'no') [no] danix             |
+| Full user name for danix? [danix] Daniele Mazzocchio                         |
+| Password for danix account? (will not echo) pAssWOrd                         |
+| Password for danix account? (again) pAssWOrd                                 |
+| Since you set up a user, disable sshd(8) logins to root? [yes] Enter         |
++------------------------------------------------------------------------------+
+
+Next, BowlFish will prompt you for the time zone:
+
++------------------------------------------------------------------------------+
+| What timezone are you in? ('?' for list) [Canada/Mountain] ?                 |
+| Africa/      Chile/       GB-Eire      Israel       NZ-CHAT      UCT         |
+| America/     Cuba         GMT          Jamaica      Navajo       US/         |
+| Antarctica/  EET          GMT+0        Japan        PRC          UTC         |
+| Arctic/      EST          GMT-0        Kwajalein    PST8PDT      Universal   |
+| Asia/        EST5EDT      GMT0         Libya        Pacific/     W-SU        |
+| Atlantic/    Egypt        Greenwich    MET          Poland       WET         |
+| Australia/   Eire         HST          MST          Portugal     Zulu        |
+| Brazil/      Etc/         Hongkong     MST7MDT      ROC          posix/      |
+| CET          Europe/      Iceland      Mexico/      ROK          posixrules  |
+| CST6CDT      Factory      Indian/      Mideast/     Singapore    right/      |
+| Canada/      GB           Iran         NZ           Turkey       zone.tab    |
+| What timezone are you in? ('?' for list) [Canada/Mountain] Europe            |
+| What sub-timezone of 'Europe' are you in? ('?' for list) ?                   |
+| Amsterdam    Chisinau     Kiev         Moscow       Sarajevo     Vatican     |
+| Andorra      Copenhagen   Lisbon       Nicosia      Simferopol   Vienna      |
+| Athens       Dublin       Ljubljana    Oslo         Skopje       Vilnius     |
+| Belfast      Gibraltar    London       Paris        Sofia        Volgograd   |
+| Belgrade     Guernsey     Luxembourg   Podgorica    Stockholm    Warsaw      |
+| Berlin       Helsinki     Madrid       Prague       Tallinn      Zagreb      |
+| Bratislava   Isle_of_Man  Malta        Riga         Tirane       Zaporozhye  |
+| Brussels     Istanbul     Mariehamn    Rome         Tiraspol     Zurich      |
+| Bucharest    Jersey       Minsk        Samara       Uzhgorod                 |
+| Budapest     Kaliningrad  Monaco       San_Marino   Vaduz                    |
+| What sub-timezone of 'Europe' are you in? ('?' for list) Rome                |
++------------------------------------------------------------------------------+
+
+1.2.3 Disk setup and file sets
+------------------------------
+
+You wil now initialize the disk that BowlFish will use. In this example, my
+compact flash card is at sd0; if you're installing on a vnode disk, type "vnd0"
+instead:
+
++------------------------------------------------------------------------------+
+| Which is the root disk? [sd0] Enter                                          |
+|                                                                              |
+| You will now be prompted for sd0 disk geometry. Defaults should be fine, but |
+| you may have good reasons for overriding them.                               |
+|                                                                              |
+| Sectors/track? [32] Enter                                                    |
+| Tracks/cylinder (heads)? [8] Enter                                           |
+| Cylinders? [490] Enter                                                       |
++------------------------------------------------------------------------------+
+
+As you can see, BowlFish guessed the correct C-H-S values and prompted them as
+defaults: simply press Enter to accept them. If you're installing on a vnode
+disk instead, you will probably have to enter the correct values.
+
+At this point, BowlFish runs fdisk(8) to initialize the Master Boot Record
+partition data, disklabel(8) to install the label on the disk and newfs(8) to
+build the new filesystem.
+
++------------------------------------------------------------------------------+
+| Setting OpenBSD MBR partition to whole sd0... done.                          |
+| /dev/rsd0a: 61.1MB in 125184 sectors of 512 bytes                            |
+| 4 cylinder groups of 15.28MB, 978 blocks, 2048 inodes each                   |
+| /dev/sd0a on /tmp/tmp.ehHHiVp8lM type ffs (rw, asynchronous, local, ctime=Wed|
+| Nov 18 21:55:18 2009)                                                        |
++------------------------------------------------------------------------------+
+
+Now it's time to install the sets. If you have put them all (bsd, baseXX.tgz,
+etcXX.tgz and bowlfish.tgz) in the working directory, Bowlfish will find them
+automatically, and you won't have to specify their path. If any of them is not
+in the current directory, you will be prompted for its directory pathname.
+
++------------------------------------------------------------------------------+
+| Let's install the sets!                                                      |
+| Pathname to bsd? /                                                           |
++------------------------------------------------------------------------------+
+
+In this case, BowlFish has found all the sets, except the kernel, in the working
+directory. However, it has not found the (optional) site.tgz file, and asks for
+it:
+
++------------------------------------------------------------------------------+
+| Do you wish to install a custom fileset (site.tgz)? [no] y                   |
+| Pathname to site.tgz? ../../software/                                        |
+|                                                                              |
+| The following sets will be installed:                                        |
+|                                                                              |
+|  /bsd                                                                        |
+|  /root/bowlfish-2.1/base49.tgz                                               |
+|  /root/bowlfish-2.1/etc49.tgz                                                |
+|  /root/bowlfish-2.1/bowlfish.tgz                                             |
+|  /software/site.tgz                                                          |
+|                                                                              |
+| Ready to install sets? [yes] Enter                                           |
+| Getting bsd ...                                                              |
+| 100% |*****************************************************|  8809 KB  00:00 |
+| Getting base49.tgz ...                                                       |
+| 100% |*****************************************************| 53505 KB  00:05 |
+| Getting etc49.tgz ...                                                        |
+| 100% |*****************************************************|   507 KB  00:00 |
+| Getting bowlfish.tgz ...                                                     |
+| 100% |*****************************************************|  6030     00:00 |
+| Getting site.tgz ...                                                         |
+| 100% |*****************************************************|  2274 KB  00:00 |
+| Installing library dependencies for base49.tgz... done.                      |
++------------------------------------------------------------------------------+
+
+BowlFish automatically determines which libraries are required by the binaries
+extracted from the baseXX.tgz package, so you don't need to worry about this.
+
+The last steps are for BowlFish to save the configuration files, generate the
+sshd(8) and isakmpd(8) keys, create the device nodes and install the boot block
+with installboot(8).
+
++------------------------------------------------------------------------------+
+| Saving configuration files... done.                                          |
+| ssh-keygen: generating new DSA host key... done.                             |
+| ssh-keygen: generating new RSA host key... done.                             |
+| ssh-keygen: generating new RSA1 host key... done.                            |
+| openssl: generating new isakmpd RSA key... done.                             |
+| Making all device nodes... done                                              |
+| Installing boot block...                                                     |
+| boot: /tmp/tmp.ehHHiVp8lM/boot proto: /usr/mdec/biosboot device: /dev/rsd0c  |
+| /tmp/tmp.ehHHiVp8lM/boot is 3 blocks x 16384 bytes                           |
+| fs block shift 2; part offset 63; inode block 24, offset 4520                |
+| using MBR partition 3: type 0xA6 offset 32                                   |
+| done.                                                                        |
+|                                                                              |
+| CONGRATULATIONS! Your BowlFish install has been successfully completed!      |
+| Have fun!                                                                    |
+| #                                                                            |
++------------------------------------------------------------------------------+
+
+1.3 Post-installation customization
+-----------------------------------
+
+Now your compact flash card is a bootable OpenBSD disk. However, before plugging
+it into the board, you may want to add some "before-first-boot" configuration.
+
+For instance, if the system will be a firewall, after you mount the disk (using
+chroot(8) avoids confusion with the system you're building from):
+
++------------------------------------------------------------------------------+
+| # mount /dev/sd0a /mnt/                                                      |
+| # chroot /mnt/                                                               |
++------------------------------------------------------------------------------+
+
+you should, at least, edit the /etc/sysctl.conf(5) file to enable IP forwarding:
+
++- /mnt/etc/sysctl.conf -------------------------------------------------------+
+|                                                                              |
+| [...]                                                                        |
+| net.inet.ip.forwarding=1                                                     |
++------------------------------------------------------------------------------+
+
+and of course edit the packet filter configuration file, /etc/pf.conf(5).
+
+You may also add further network configuration information (e.g. a WEP key for
+wireless NICs), zone files if you installed named(8), web pages if you installed
+Apache, add users and so on.
+
+Once your system is fully configured, you can unmount the compact flash card,
+plug it into the board and power the device up. Everything should run fine and
+dandy; anyway, if you want to make changes to the system while it's running, you
+have to first mount the disk read-write:
+
++------------------------------------------------------------------------------+
+| # mount -o rw,noatime /dev/wd0a /                                            |
++------------------------------------------------------------------------------+
+
+and then remember to mount it back read-only when you're done.
+
++------------------------------------------------------------------------------+
+| # mount -o ro /dev/wd0a /                                                    |
++------------------------------------------------------------------------------+
+
+Root's profile contains a couple of aliases ('rw' and 'ro') to make this faster.
+You may also find the following links useful:
+
+    * Adding users in OpenBSD (http://www.openbsd.org/faq/faq10.html#AddDelUser)
+    * Initial Network Setup (http://www.openbsd.org/faq/faq6.html#Setup)
+    * Man Pages of popular/useful commands
+      (http://www.openbsd.org/faq/faq2.html#ManPages)
+    * OpenBSD man pages on the Web (http://www.openbsd.org/cgi-bin/man.cgi)
+
+Again, a brief note about WRAP and ALIX boards: to reflect the different
+console speed (see above), you should modify /etc/boot.conf and /etc/ttys:
+
++- /mnt/etc/boot.conf ---------------------------------------------------------+
+|                                                                              |
+| set tty com0                                                                 |
+| stty com0 38400                                                              |
++------------------------------------------------------------------------------+
+
++- /mnt/etc/ttys --------------------------------------------------------------+
+|                                                                              |
+| [...]                                                                        |
+| tty00	"/usr/libexec/getty std.38400"	vt100	on  secure                     |
+| [...]                                                                        |
++------------------------------------------------------------------------------+
+
+1.4 Installing on a vnode disk
+------------------------------
+
+If you're planning to build multiple similar systems, you may consider
+installing BowlFish on a virtual disk image, using vnconfig(8). This will let
+you create a binary image of the system that you can write to any number of
+(identical) flash cards.
+
+The first step is to create a file of the size of your flash card. For instance,
+for a 64MB CF, type:
+
++------------------------------------------------------------------------------+
+| # dd if=/dev/zero of=net4521.img bs=512 count=125440                         |
++------------------------------------------------------------------------------+
+
+Here bs is the number of bytes/sector (usually 512) and count is the number of
+sectors to write. Remember how we initially got our disk geometry
+(C-H-S values)? Well, multiply these values (490 * 8 * 32, in our example) and
+you'll get the total number of sectors.
+
+Next, configure the file as a pseudo disk device with vnconfig(8):
+
++------------------------------------------------------------------------------+
+| # vnconfig -c vnd0 net4521.img                                               |
++------------------------------------------------------------------------------+
+
+You can now install BowlFish on the vnd0 disk. Be careful, when prompted, to
+provide the correct disk geometry, because BowlFish won't probably be able to
+guess the correct values.
+
++------------------------------------------------------------------------------+
+| ./install                                                                    |
+| [...]                                                                        |
+| Which is the root disk? [sd0] vnd0                                           |
+|                                                                              |
+| You will now be prompted for vnd0 disk geometry. Defaults should be fine,    |
+| but you may have good reasons for overriding them.                           |
+|                                                                              |
+| Sectors/track? [100] 32                                                      |
+| Tracks/cylinder (heads)? [1] 8                                               |
+| Cylinders? [1254] 490                                                        |
+| [...]                                                                        |
++------------------------------------------------------------------------------+
+
+Once you have finished your installation, unconfigure the virtual disk:
+
++------------------------------------------------------------------------------+
+| # vnconfig -u vnd0                                                           |
++------------------------------------------------------------------------------+
+
+and dd(1) the image to the flash card:
+
++------------------------------------------------------------------------------+
+| # dd if=net4521.img of=/dev/sd0c bs=512                                      |
++------------------------------------------------------------------------------+
+
+
+2. Filesystem layout
+--------------------
+
+The first time you log into the system, you'll probably notice that its main
+oddity is its filesystem layout. You will find a read-only / filesystem, a
+memory-mapped /tmp directory and that /var and /root are symlinks (to /tmp/var
+and /tmp/root respectively).
+
+All this is due to the fact that compact flash cards have a limited number of
+write cycles per sector before that sector becomes unusable. As a consequence,
+the flash card has to be mounted read-only. Directories that must be read-write
+(/tmp, /var and /root) instead, are mapped to memory with mount_mfs(8). This
+avoids logging and creating temporary files on the compact flash.
+
+As you can see from fstab(5),
+
++- /etc/fstab -----------------------------------------------------------------+
+|                                                                              |
+| /dev/wd0a       /       ffs     ro                              1 1          |
+| swap            /tmp    mfs     rw,nosuid,-P=/tmplate,-s=16384  0 0          |
++------------------------------------------------------------------------------+
+
+at boot time /tmp is mounted on a 8MB memory filesystem (-s=16384) and populated
+with the contents of the /tmplate directory (-P=/tmplate). This directory is a
+template of /tmp and includes the /tmp/var and /tmp/root directory trees, which
+are the targets of the /var and /root symlinks.
+
+The /var directory also contains the pseudo-terminal devices (in /var/run/dev):
+the system must be able to change their owner and permissions, so they can't
+reside on the (read-only) /dev filesystem. 
+
+
+3. Frequently Asked Questions
+-----------------------------
+
+3.1 How do I change the size of the memory-based /tmp file system?
+------------------------------------------------------------------
+
+The size of the /tmp filesystem is set in /etc/fstab(5) (see above); it is
+determined by the "-s" option and defaults to 16384 sectors, i.e. 8MB (1 sector
+= 512 bytes).
+
+If you wish to make /tmp larger, just mount the "/" filesystem read-write and
+edit /etc/fstab(5) to adjust the size of /tmp according to your needs (for
+example, "-s=65536" will build a 32MB /tmp filesystem):
+
++- /etc/fstab -----------------------------------------------------------------+
+| [ ... ]                                                                      |
+| swap            /tmp    mfs     rw,nosuid,-P=/tmplate,-s=65536  0 0          |
++------------------------------------------------------------------------------+
+
+and then reboot.
+
+3.2 Is there a limit to how big the /tmp filesystem can be?
+-----------------------------------------------------------
+
+According to the documentation, the maximum theoretical size of a memory-based
+filesystem is (2^31 - 1) sectors, which is slightly less than 1TB, assuming a
+sector size of 512 bytes. Note however that for mount_mfs(8) the practical limit
+is based on datasize in login.conf(5), and ultimately depends on the per-arch
+MAXDSIZ limit.
+
+By default, the value of the datasize capability is 512MB, but can be easily
+changed by editing the login.conf(5) file; the MAXDSIZ constant, instead, is
+defined in /usr/sys/arch/i386/include/vmparam.h (for the i386 architecture) and
+defaults to 1GB; changing its value requires that you recompile the kernel.
+
+3.3 How do I install packages on a BowlFish system?
+---------------------------------------------------
+
+To minimize disk space usage, BowlFish includes only the strictly necessary
+binaries and files; as a consequence, you won't find any of the usual commands
+for managing precompiled software packages, such as pkg_add(1).
+
+Anyway, if you want these commands to be available, just copy the following
+files and directories from an OpenBSD system to your BowlFish device:
+
++------------------------------------------------------------------------------+
+| /usr/sbin/pkg*                                                               |
+| /usr/bin/perl                                                                |
+| /usr/lib/libm.so.2.3                                                         |
+| /usr/lib/libperl.so.10.1                                                     |
+| /usr/libdata/perl5/                                                          |
+| /usr/bin/arch                                                                |
+| /usr/sbin/group                                                              |
+| /usr/sbin/groupadd                                                           |
+| /usr/sbin/useradd                                                            |
+| /usr/sbin/userdel                                                            |
+| /usr/sbin/groupdel                                                           |
+| /usr/bin/install-info                                                        |
++------------------------------------------------------------------------------+
+
+Alternatively, you could add this file list to install.files (in the [base]
+section) to get them automatically included during the installation.
+Note: OpenBSD collects information about installed packages in the /var/db/pkg
+directory; since /var is a RAM-based filesystem, this is information will be
+lost at reboot, unless you manually copy it to /tmplate/var/db/pkg.
+

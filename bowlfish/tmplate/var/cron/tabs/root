@@ -1,0 +1,5 @@
+SHELL=/bin/sh
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+HOME=/var/log
+
+0 * * * *	/usr/bin/newsyslog

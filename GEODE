@@ -1,0 +1,238 @@
+# OpenBSD config for networking on the Geode SC1100 and Geode LX
+#
+# (PC Engines WRAP/ALIX and Soekris Engineering net4801/net5501
+# embedded systems)
+#
+# chris@nmedia.net
+
+machine         i386            # architecture, used by config; REQUIRED
+
+option          DDB             # in-kernel debugger
+#option         DDB_SAFE_CONSOLE # allow break into ddb during boot
+#makeoptions    DEBUG="-g"      # compile full symbol table
+#makeoptions    PROF="-pg"      # build profiled kernel
+#option         GPROF           # kernel profiling, kgmon(8)
+option          DIAGNOSTIC      # internal consistency checks
+option          KTRACE          # system call tracing, a la ktrace(1)
+#option         KMEMSTATS       # collect malloc(9) statistics
+
+option          CRYPTO          # Cryptographic framework
+
+option          FFS             # UFS
+option          MFS             # Memory FS
+#option         FFS_SOFTUPDATES # Soft updates
+
+option          TCP_SACK        # Selective Acknowledgements for TCP
+#option         TCP_FACK        # Forward Acknowledgements for TCP
+option          TCP_SIGNATURE   # TCP MD5 Signatures, for BGP routing sessions
+
+option          FDESC           # /dev/fd
+option          FIFO            # FIFOs; RECOMMENDED
+option          KERNFS          # /kern
+#option         NULLFS          # loopback file system
+option          PROCFS          # /proc
+#option         UMAPFS          # NULLFS + uid and gid remapping
+
+option          SYSVMSG         # System V-like message queues
+option          SYSVSEM         # System V-like semaphores
+option          SYSVSHM         # System V-like memory sharing
+
+option          INET            # IP + ICMP + TCP + UDP
+option          ALTQ            # ALTQ base
+option          INET6           # IPv6 (needs INET)
+#option         PULLDOWN_TEST   # use m_pulldown for IPv6 packet parsing
+option          IPSEC           # IPsec
+#option         PPP_BSDCOMP     # PPP BSD compression
+#option         PPP_DEFLATE
+
+option          BOOT_CONFIG     # add support for boot -c
+
+option          USER_PCICONF    # user-space PCI configuration
+
+#option         KGDB            # Remote debugger support; exclusive of DDB
+#option         "KGDB_DEVNAME=\"com\"",KGDBADDR=0x2f8,KGDBRATE=9600
+
+#option         DUMMY_NOPS      # speed hack; recommended
+
+maxusers        32              # estimated number of users
+
+config          bsd     root on wd0a
+
+mainbus0 at root
+
+cpu0            at mainbus0
+bios0           at mainbus0
+apm0    at bios0 flags 0x0000   # flags 0x0101 to force protocol version 1.1
+pcibios0 at bios0 flags 0x0000  # use 0x30 for a total verbose
+
+isa0    at mainbus0
+isa0    at pcib?
+isa0    at gscpcib?             # WRAP/NET4801
+isa0    at glxpcib?             # ALIX/NET5501
+pci*    at mainbus0
+
+ohci*   at pci?                 # Open Host Controller
+ehci*   at pci?                 # USB2 Enhanced HCI
+usb*    at ohci?
+usb*    at ehci?
+
+option          PCCOMCONSOLE
+option          CONSPEED=19200
+
+option          PCIVERBOSE
+
+uhub*   at usb?                 # USB Hubs
+uhub*   at uhub?                # USB Hubs
+umodem* at uhub?                # USB Modems/Serial
+ucom*   at umodem?
+#ubsa*  at uhub?                # Belkin serial adapter
+#ucom*  at ubsa?
+#uftdi* at uhub?                # FTDI FT8U100AX serial adapter
+#ucom*  at uftdi?
+#uplcom* at uhub?               # I/O DATA USB-RSAQ2 serial adapter
+#ucom*  at uplcom?
+#umct*  at uhub?                # MCT USB-RS232 serial adapter
+#ucom*  at umct?
+#uaudio* at uhub?               # USB Audio
+#umidi* at uhub?
+#ulpt*  at uhub?                # USB Printers
+#umass* at uhub?                # USB Mass Storage devices
+#scsibus* at umass?
+#aue*   at uhub?                # ADMtek AN986 Pegasus Ethernet
+#cue*   at uhub?                # CATC USB-EL1201A based Ethernet
+#kue*   at uhub?                # Kawasaki KL5KUSB101B based Ethernet
+#upl*   at uhub?                # Prolific PL2301/PL2302 host-to-host `network'
+#url*   at uhub?                # Realtek RTL8150L based adapters
+#urio*  at uhub?                # Diamond Multimedia Rio 500
+#uyap*  at uhub?                # Y@P firmware loader
+#udsbr* at uhub?                # D-Link DSB-R100 radio
+#radio* at udsbr
+ugen*   at uhub?                # USB Generic driver
+uow*    at uhub?                # Maxim/Dallas DS2490 1-Wire adapter
+onewire* at uow?
+
+pchb*   at pci?                 # PCI-Host bridges
+geodesc* at pci?                # NSC Geode System Controller WRAP/NET4801
+glxpcib* at pci?                # AMD CS5536 PCI-ISA bridge ALIX/NET5501
+nsclpcsio* at isa? port 0x2e    # NS PC87366 LPC Super I/O
+nsclpcsio* at isa? port 0x4e
+gpio*   at nsclpcsio?
+gpio*   at glxpcib?
+
+# WRAP/NET4801
+gscsio* at isa? port 0x2e       # NS Geode SC1100 Super I/O
+gscsio* at isa? port 0x15c
+iic*    at gscsio?              # ACCESS.bus 1 & 2
+maxds*  at iic?                 # Maxim DS1631/1624/1721
+lmtemp* at iic?                 # NS LM75/LM77 temperature sensor
+
+ppb*    at pci?                 # PCI-PCI bridges
+pci*    at ppb?
+pci*    at pchb?
+pcib*   at pci?                 # PCI-ISA bridge
+gscpcib* at pci?                # NS Geode SC1100 PCI-ISA bridge
+gpio*  at gscpcib?
+
+npx0    at isa? port 0xf0 irq 13        # math coprocessor
+isadma0 at isa?
+
+# The ALIX.1 can have a real console.
+
+#option  WSDISPLAY_COMPAT_USL            # VT handling
+#option  WSDISPLAY_COMPAT_RAWKBD         # provide raw scancodes; needed for X11
+#option  WSDISPLAY_DEFAULTSCREENS=6      # initial number of text consoles
+#option  WSDISPLAY_COMPAT_PCVT           # emulate some ioctls; needed for X11
+
+#pckbc0 at isa?         # PC keyboard controller
+#pckbd* at pckbc?       # PC keyboard
+#pms*   at pckbc?       # PS/2 mouse for wsmouse
+#vga*   at pci?
+#wsdisplay*     at vga?
+#wsdisplay*     at pcdisplay?
+#wskbd*         at pckbd? mux 1
+#wsmouse*       at pms? mux 0
+
+#pcppi0 at isa?
+#sysbeep0 at pcppi?
+#midi*  at pcppi?
+#spr0   at pcppi?
+
+com0    at isa? port 0x3f8 irq 4        # standard PC serial ports
+com1    at isa? port 0x2f8 irq 3
+
+# IDE controllers
+pciide* at pci?  flags 0x0000
+wdc0    at isa? port 0x1f0 irq 14 flags 0x00
+
+wd*     at wdc? flags 0x0000
+wd*     at pciide? flags 0x0000
+
+sis*    at pci?                 # SiS 900/7016 ethernet
+vr*     at pci?                 # Via Rhine ethernet
+
+#lmc*   at pci?                 # Lan Media / SBE card
+#san*   at pci?                 # Sangoma PCI AFT card
+#musycc*        at pci?         # Conexant HDLC controller
+#art*   at musycc?
+
+nsphyter* at mii?               # NS and compatible PHYs
+ukphy*  at mii?                 # Generic PHY driver
+
+# crypto support
+hifn*   at pci?                 # Hi/fn 7xxx crypto card
+glxsb*  at pci?                 # Chipset crypto
+
+# Wireless network cards
+wi*     at pci?                 # Intersil Prism MiniPCI wireless card
+ath*    at pci?                 # Atheros MiniPCI wireless card
+ral*    at pci?                 # RAlink MiniPCI wireless card
+
+# GPIO ``pin bus'' drivers
+#gpioiic* at gpio? offset 0 mask 0x3    # I2C bus bit-banging
+#iic*   at gpioiic?
+#gpioow* at gpio? offset 0 mask 0x1     # 1-Wire bus bit-banging
+#onewire* at gpioow?
+
+# 1-Wire devices
+option ONEWIREVERBOSE
+owid*   at onewire?             # ID
+owsbm*  at onewire?             # Smart Battery Monitor
+owtemp* at onewire?             # Temperature
+
+pseudo-device   pctr            1
+
+pseudo-device   crypto          1
+
+pseudo-device   ksyms           1
+pseudo-device   systrace        1
+
+pseudo-device   pf              # packet filter
+pseudo-device   pflog           # pf log if
+pseudo-device   pfsync          # pf sync if
+pseudo-device   pflow           # pflow export if
+
+# clonable devices
+pseudo-device   loop            # network loopback
+pseudo-device   bpfilter        # packet filter
+pseudo-device   trunk           # Trunking support
+pseudo-device   carp            # CARP protocol support
+pseudo-device   sl              # CSLIP
+pseudo-device   ppp             # Async PPP
+pseudo-device   tun             # network tunneling over tty
+pseudo-device   enc             # IPSEC encapsulating interface
+pseudo-device   bridge          # network bridging support
+pseudo-device   vlan            # IEEE 802.1Q VLAN
+pseudo-device   gre             # GRE encapsulation interface
+pseudo-device   gif             # IPv[46] over IPv[46] tunnel (RFC1933)
+
+#pseudo-device  strip   1       # Starmode Radio IP interface
+pseudo-device   pty     32      # pseudo-terminals
+pseudo-device   nmea    1       # NMEA 0183 line discipline
+pseudo-device   msts    1       # MSTS line discipline
+
+# for IPv6
+#pseudo-device  faith   1       # IPv[46] tcp relay translation i/f
+
+pseudo-device   pppoe   1       # PPP over Ethernet (RFC 2516)
+pseudo-device   sppp    1       # Cisco HDLC / PPP
+pseudo-device   mtrr    1       # Memory range attributes control

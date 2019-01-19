@@ -1,0 +1,3 @@
+# Place the log socket in memory
+syslogd_flags="-p /var/run/dev/log"
+

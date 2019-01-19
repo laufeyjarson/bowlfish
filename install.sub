@@ -1,0 +1,206 @@
+################################################################################
+#                                                                              #
+# install.sub - BowlFish install script common soubroutines                    #
+#                                                                              #
+# Version      : 2.1                                                           #
+# Created date : 10 Nov, 2005                                                  #
+# Last update  : 06 Aug, 2011                                                  #
+# Author       : Daniele Mazzocchio (danix@kernel-panic.it)                    #
+#                                                                              #
+#                                                                              #
+# Copyright (c) 2005-2011, Daniele Mazzocchio                                  #
+# All rights reserved.                                                         #
+#                                                                              #
+# Redistribution and use in source and binary forms, with or without           #
+# modification, are permitted provided that the following conditions are met:  #
+#                                                                              #
+#   * Redistributions of source code must retain the above copyright notice,   #
+#     this list of conditions and the following disclaimer.                    #
+#   * Redistributions in binary form must reproduce the above copyright        #
+#     notice, this list of conditions and the following disclaimer in the      #
+#     documentation and/or other materials provided with the distribution.     #
+#   * Neither the name of the author nor the names of his contributors may be  #
+#     used to endorse or promote products derived from this software without   #
+#     specific prior written permission.                                       #
+#                                                                              #
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  #
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    #
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   #
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE     #
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR          #
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF         #
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS     #
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN      #
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)      #
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE   #
+# POSSIBILITY OF SUCH DAMAGE.                                                  #
+#                                                                              #
+################################################################################
+
+# Exit functions ###############################################################
+function cleanup {
+    # Clean up on exit
+    local _dir=$1
+
+    cd $_dir
+    umount /dev/${disk}a 2>/dev/null
+    [[ -d "$root" ]] && rm -rf $root 2>/dev/null
+}
+
+function quit {
+    # Print an error message and exit
+    local _msg=$1
+
+    echo $_msg
+    exit 1
+}
+
+# User input functions #########################################################
+function ask {
+    # Ask a question and echo the reply
+    local _question=$1 _default=$2 _reply
+
+    set -o noglob
+    read _reply?"$_question ${_default:+[$_default] }"
+    echo ${_reply:-$_default}
+    set +o noglob
+}
+
+function ask_until {
+    # ask() until the reply is not NULL
+    local _question=$1 _default=$2 _reply
+
+    until [ "$_reply" ]; do _reply=$(ask "$_question" "$_default"); done
+    echo $_reply
+}
+
+function ask_yn {
+    # Ask() a yes-or-no question
+    local _question=$1 _default=${2:-no}
+
+    while :; do
+        case $(ask "$_question" "$_default") in
+            [Yy]?([Ee][Ss]) ) echo "y"; break ;;
+            [Nn]?([Oo])     ) echo "n"; break ;;
+        esac
+    done
+}
+
+function ask_ip {
+    # Ask for an IPv4 address
+    local _question=$1 _default=$2 _reply
+
+    # The input check isn't very strict, but it's better than nothing...
+    until [[ "$_reply" = +(+([0-9]).+([0-9]).+([0-9]).+([0-9])*( )|none|dhcp) ]]; do
+        _reply=$(ask "$_question" "$_default")
+    done
+    echo $_reply
+}
+
+function ask_pass {
+    # Ask for a password
+    local _question=$1
+
+    set -o noglob
+    stty -echo
+    echo $(ask "$_question")
+    stty echo
+    set +o noglob
+}
+
+function get_geometry {
+    # Get disk drive geometry
+    local _param=$1
+
+    disklabel $disk 2>/dev/null | grep "${_param}:" | cut -d " " -f 2
+}
+
+function get_timezone {
+    # Get the machine's time zone
+    local _zoneroot=/usr/share/zoneinfo/ _lt=/etc/localtime _tz
+
+    [[ -d "$_zoneroot" ]] || return
+    [[ -L $_lt ]] && def_tz=$(readlink $_lt | sed s@$_zoneroot@@g) || def_tz="GMT"
+
+    while :; do
+        _tz=$(ask "What timezone are you in? ('?' for list)" "$def_tz")
+
+        if [[ "$_tz" = "?" ]]; then
+            ls -F $_zoneroot >&2
+            continue
+        fi
+
+        while [[ -d ${_zoneroot}${_tz} ]]; do
+            stz=$(ask "What sub-timezone of '$_tz' are you in? ('?' for list)")
+            case "$stz" in
+                "" ) ;;
+                ?  ) ls -F $_zoneroot/$_tz >&2 ;;
+                *  ) _tz=${_tz}/$stz ;;
+            esac
+        done
+
+        if [[ -f $_zoneroot/$_tz ]]; then
+            echo $_tz
+            return
+        fi
+
+        echo "'$_tz' is not a valid timezone on this system." >&2
+    done
+}
+
+# File sets installation functions #############################################
+function find_sets {
+    # Find the paths to all file sets
+    local _set _dir
+
+    for _set; do
+        if [ -f $PWD/$_set ]; then
+            _dir=$PWD
+        elif [ ! -f ${_dir:=$PWD}/$_set ]; then
+            while :; do
+                _dir=$(ask_until "Pathname to '${_set}'?")
+                [ -f $_dir/$_set ] && break || echo "File '$_set' not found in $_dir." >&2
+            done
+        fi
+        echo -n "$(abs_path $_dir/$_set) "
+    done
+}
+
+function abs_path {
+    # Convert relative path to absolute
+    local _dir=$(dirname $1) _base=$(basename $1)
+
+    (cd $_dir && echo ${PWD%/}/$_base)
+}
+
+function get_files {
+    # Print the list of files to extract from the archive passed as argument.
+    local _section=${1%[0-9][0-9].tgz} _x=0 _line
+
+    while read _line; do
+        case "$_line" in
+            \#* | ""                ) ;;
+            \[*( )${_section}*( )\] ) _x=1 ;;
+            \[*\]                   ) _x=0 ;;
+            *                       ) [[ $_x -eq 1 ]] && echo $_line ;;
+        esac
+    done < ./install.files
+}
+
+function install_file {
+    # Install the fileset passed as argument.
+    local _file=$1 _f=$(basename $1)
+    local _temp=$(mktemp -qt) || quit "Failed to create temporary file."
+
+    echo "Getting $_f ..."
+    case $_f in
+        *.tgz      ) get_files $_f > $_temp
+                     ftp -o - -V -m file://$_file |    \
+                     tar -zxphf - -C $root          \
+                         -s!^./var/!./tmplate/var/! \
+                         -s!^./root/!./tmplate/root/! -I $_temp ;;
+        *          ) ftp -o $root/$_f -V -m file://$_file ;;
+    esac
+    [[ $? -eq 0 ]] || echo "$_f did not install correctly."
+    rm $_temp
+}

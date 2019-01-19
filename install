@@ -1,0 +1,342 @@
+#!/bin/ksh
+
+################################################################################
+#                                                                              #
+#   install - BowlFish installation script                                     #
+#                                                                              #
+# Version      : 2.1                                                           #
+# Created date : 10 Nov, 2005                                                  #
+# Last update  : 06 Aug, 2011                                                  #
+# Author       : Daniele Mazzocchio (danix@kernel-panic.it)                    #
+#                                                                              #
+# BowlFish is a customized OpenBSD installation script. It is intended to make #
+# OpenBSD fit into the small media (e.g. compact flash cards) that typically   #
+# come together with embedded systems, like Soekris and WRAP boards.           #
+# The installation procedure is as similar as possible to a standard OpenBSD   #
+# install.                                                                     #
+# BowlFish is based upon the flashdist installation script by Chris Cappuccio  #
+# (chris@nmedia.net) and the OpenBSD install scripts.                          #
+#                                                                              #
+#                                                                              #
+# Copyright (c) 2005-2011, Daniele Mazzocchio                                  #
+# All rights reserved.                                                         #
+#                                                                              #
+# Redistribution and use in source and binary forms, with or without           #
+# modification, are permitted provided that the following conditions are met:  #
+#                                                                              #
+#   * Redistributions of source code must retain the above copyright notice,   #
+#     this list of conditions and the following disclaimer.                    #
+#   * Redistributions in binary form must reproduce the above copyright        #
+#     notice, this list of conditions and the following disclaimer in the      #
+#     documentation and/or other materials provided with the distribution.     #
+#   * Neither the name of the author nor the names of his contributors may be  #
+#     used to endorse or promote products derived from this software without   #
+#     specific prior written permission.                                       #
+#                                                                              #
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"  #
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE    #
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE   #
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE     #
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR          #
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF         #
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS     #
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN      #
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)      #
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE   #
+# POSSIBILITY OF SUCH DAMAGE.                                                  #
+#                                                                              #
+################################################################################
+
+unset root
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+. ./install.sub              # Include common subroutines
+
+trap "cleanup $PWD" EXIT     # Clean up on EXIT
+
+cat <<__EOT
+
+Welcome to the BowlFish installation program.
+
+This program will help you install OpenBSD in a simple and rational way.
+Default answers are shown in []'s and are selected by pressing RETURN.
+At any time you can exit this program by pressing Control-C.
+
+__EOT
+
+# Network configuration ########################################################
+hostname=$(ask_until "System hostname? (short form, e.g. 'foo')")
+
+set -A ifs
+while :; do
+    _if=$(ask_until "Which network interface do you wish to configure? (or 'done')")
+    if [[ $_if = "done" ]]; then
+        break
+    elif [[ $_if != @(+([a-z])+([0-9])) ]]; then
+        echo "$_if is not a valid interface."
+    else
+        _hn=$(ask "Symbolic (host) name for ${_if}?" "$hostname")
+        _ip=$(ask_ip "IPv4 address for $_if? (or 'dhcp' or 'none')" "dhcp")
+        [[ $_ip = [0-9]* ]] && _nm=$(ask_ip "Netmask?" "255.255.255.0") || _nm=""
+        ifs[${#ifs[*]}]="$_if $_hn $_ip $_nm"
+    fi
+done
+
+gw=$(ask_ip "Default IPv4 route? (IPv4 address, 'dhcp' or 'none')")
+domain=$(ask "DNS domain name? (e.g. 'bar.com')" "my.domain")
+dns=$(ask_ip "DNS nameservers? (IP address list or 'none')" "none")
+
+# Root password ################################################################
+while :; do
+    root_pw=$(ask_pass "Password for root account? (will not echo)")
+    echo ""
+    [[ -n "$root_pw" ]] || continue
+    [[ "$root_pw" = $(ask_pass "Password for root account? (again)") ]] && break
+    echo "\nPasswords do not match, try again."
+done
+echo ""
+
+# Default daemons ##############################################################
+sshd=$(ask_yn "Start sshd(8) by default?" "yes")
+ntpd=$(ask_yn "Start ntpd(8) by default?" "no")
+[[ $ntpd = "y" ]] && ntp_srv=$(ask "NTP server? (hostname or 'default')" "default")
+loghost=$(ask "Central syslog server? ('none' for ramdisk logging)" "none")
+
+# User setup ###################################################################
+_q="Setup a user? (enter a lower-case loginname, or 'no')"
+while :; do
+    login=$(ask_until "$_q" "no")
+    case $login in
+        [Nn]?([Oo])     )
+            break
+            ;;
+        [Yy]?([Ee][Ss]) )
+            _q="No really, what is the lower-case loginname, or 'no'?"
+            ;;
+        root|daemon|operator|bin|smmsp|popa3d|sshd|uucp|www|named|proxy|nobody|ftp)
+            echo "$login is not a useable loginname."
+            ;;
+        [a-z]*([a-z0-9_]))
+            (( ${#login} <= 31 )) && break || echo "Too long."
+            ;;
+    esac
+done
+
+if [[ "$login" != [Nn]?([Oo]) ]]; then
+    while :; do
+        user=$(ask "Full user name for $login?" $login)
+        case $user in
+            *[:\&,]*)
+                echo "':', '&' or ',' are not allowed."
+                ;;
+            *)
+                (( ${#user} <= 100 )) && break || echo "Too long."
+                ;;
+        esac
+    done
+    while :; do
+        user_pw=$(ask_pass "Password for $login account? (will not echo)")
+        echo ""
+        [[ -n "$user_pw" ]] || continue
+        [[ "$user_pw" = $(ask_pass "Password for $login account? (again)") ]] && break
+        echo "\nPasswords do not match, try again."
+    done
+    echo ""
+    sshd_disableroot=$(ask_yn "Since you set up a user, disable sshd(8) logins to root?" "yes")
+fi
+
+# Timezone #####################################################################
+tz=$(get_timezone)
+
+# Disk setup ###################################################################
+while :; do
+    disk=$(ask "Which is the root disk?" "sd0")
+    [[ -b /dev/${disk}c ]] && break || echo "Invalid disk device: $disk"
+done
+
+cat <<__EOT
+
+You will now be prompted for $disk disk geometry. Defaults should be fine, but
+you may have good reasons for overriding them.
+
+__EOT
+
+# Get disk geometry
+sec=$(ask "Sectors/track?" $(get_geometry "sectors/track"))
+hd=$(ask "Tracks/cylinder (heads)?" $(get_geometry "tracks/cylinder"))
+cyl=$(ask "Cylinders?" $(get_geometry "cylinders"))
+sc=$(( sec * hd ))				# Sectors/cylinder
+
+# Run fdisk
+echo -n "Setting OpenBSD MBR partition to whole $disk... "
+fdisk -c $cyl -h $hd -s $sec -e $disk >/dev/null 2>&1 <<__EOT
+reinit
+update
+write
+quit
+__EOT
+echo "done."
+
+# Write disk label
+echo "e\nESDI\n\n$sec\n$hd\n$sc\n$cyl\n$((sc*cyl))\n\n\nz\na a\n63
+      $((sc*(cyl-1)))\n\nq\ny" | disklabel -E $disk >/dev/null 2>&1
+
+# Build new filesystem
+newfs -qS 512 /dev/r${disk}a 2>/dev/null || quit "Failed to build new filesystem."
+
+# Mount disk
+root=$(mktemp -qtd) || quit "Failed to create temporary directory."
+mkdir -m 755 $root/etc 2>/dev/null || quit "Cannot write to $root."
+mount -vo async /dev/${disk}a $root 2>/dev/null || quit "Failed to mount ${disk}a on ${root}."
+
+# Copy filesets to disk ########################################################
+echo "\n\nLet's install the sets!"
+sets=$(find_sets bsd base??.tgz etc??.tgz bowlfish.tgz)
+
+# Allow users to install custom filesets
+[[ $(ask_yn "Do you wish to install a custom fileset (site.tgz)?") = "y" ]] && \
+    sets="$sets $(find_sets site.tgz)"
+
+echo "\nThe following sets will be installed:\n"
+for _set in $sets; do echo "  $_set"; done
+echo ""
+for _set in $sets; do install_file $(abs_path $_set); done
+
+_base=$(echo $sets | cut -d " " -f 2)
+echo -n "Installing library dependencies for $(basename $_base)... "
+
+# Create a temporary directory where to extract library files in order to strip
+# the debugging symbols before copying them to the target disk.
+_tmp_root=$(mktemp -qtd) || quit "Failed to create temporary directory."
+
+for _file in $(get_files "base"); do
+    ldd $root/$_file 2>/dev/null | egrep 'rlib|rtld' | awk '{ print $7 }'
+done | sort -u | sed s!^/!./! | xargs -r tar -C $_tmp_root -zxpf $_base
+
+[[ -x /usr/bin/strip ]] && find $_tmp_root -type f -exec strip -S {} \;
+tar -cPpf - -s@${_tmp_root}@@g $_tmp_root | tar -xpf - -C $root 2>/dev/null
+rm -rf $_tmp_root
+
+echo "done."
+
+# Save configuration files #####################################################
+echo -n "Saving configuration files... "
+
+for i in "${ifs[@]}"; do
+    set -- $i
+    case $3 in
+        "dhcp" )
+            echo "dhcp" > $root/etc/hostname.$1
+            ;;
+        [0-9]* )
+            echo "inet $3 $4" > $root/etc/hostname.$1
+            echo "$3\t$2" >> $root/etc/hosts
+            ;;
+    esac
+    chmod 640 $root/etc/hostname.$1
+done
+
+[[ "$gw" != @(none|dhcp) ]] && echo $gw > $root/etc/mygate
+echo "$hostname${domain:+.$domain}" > $root/etc/myname
+
+if [[ "$dns" != none ]]; then
+    echo "lookup file bind" > $root/etc/resolv.conf
+    for s in $dns; do echo "nameserver $s" >> $root/etc/resolv.conf; done
+fi
+
+[[ $sshd = "n" ]] && echo "sshd_flags=NO" >> $root/etc/rc.conf.local
+if [[ $sshd_disableroot == y ]]; then
+    sed -e "/^#\(PermitRootLogin\) yes/s//\1 no/" \
+        < $root/etc/ssh/sshd_config > $root/etc/ssh/sshd_config.tmp
+    mv $root/etc/ssh/sshd_config.tmp $root/etc/ssh/sshd_config
+fi
+
+# NTP configuration
+if [[ $ntpd == "y" ]]; then
+    echo "ntpd_flags=" >> $root/etc/rc.conf.local
+    if [[ "$ntp_srv" != default ]]; then
+        sed -e "s/^servers /#&/;/#server /a\\
+server $ntp_srv
+" $root/etc/ntpd.conf >$root/etc/ntpd.conf.tmp
+        mv $root/etc/ntpd.conf.tmp $root/etc/ntpd.conf
+    fi
+fi
+
+if [[ "$loghost" = "none" ]]; then
+    grep -v "loghost" $root/etc/syslog.conf.tmp
+else
+    sed -e s/loghost/$loghost/g $root/etc/syslog.conf.tmp
+fi > $root/etc/syslog.conf
+rm $root/etc/syslog.conf.tmp
+
+# Users configuration
+if [[ -n $login ]]; then
+	[[ -n "$user_pw" ]] && user_pw=$(encrypt -b 8 -- "$user_pw") || user_pw="*"
+	echo "$login:$user_pw:1000:10:staff:0:0:$username:/home/$login:/bin/ksh" >> $root/etc/master.passwd 2>/dev/null
+    install -d -o 1000 -g 10 $root/home/$login
+    cp -pR /etc/skel/* $root/home/$login/ 2>/dev/null
+    chown -R 1000:10 $root/home/$login
+	echo "1,s@wheel:.:0:root\$@wheel:\*:0:root,$login@\nw\nq" | ed $root/etc/group 2>/dev/null
+fi
+
+# Password files
+echo "1,s@^root::@root:$(encrypt -b 8 -- $root_pw):@\nw\nq" | ed $root/etc/master.passwd 2>/dev/null
+pwd_mkdb -p -d $root/etc $root/etc/master.passwd
+
+echo "done."
+
+# Generate ssh host keys
+echo -n "ssh-keygen: generating new DSA host key... "
+ssh-keygen -q -t dsa -f $root/etc/ssh/ssh_host_dsa_key -N '' && echo "done." || echo "failed."
+echo -n "ssh-keygen: generating new RSA host key... "
+ssh-keygen -q -t rsa -f $root/etc/ssh/ssh_host_rsa_key -N '' && echo "done." || echo "failed."
+echo -n "ssh-keygen: generating new RSA1 host key... "
+ssh-keygen -q -t rsa1 -f $root/etc/ssh/ssh_host_key -N ''    && echo "done." || echo "failed."
+
+# Generate rndc shared secret
+if [[ -f $root/usr/sbin/named ]]; then
+    echo -n "rndc-confgen: generating new shared secret... "
+    chroot $root rndc-confgen -a -t /var/named >/dev/null 2>&1 && \
+    { chmod 0640 /var/named/etc/rndc.key >/dev/null 2>&1 ; echo "done." ; } || echo "failed."
+fi
+
+# Generate isakmpd RSA key
+if [[ -f $root/sbin/isakmpd ]]; then
+    echo -n "openssl: generating new isakmpd RSA key... "
+    _dir="$root/etc/isakmpd/private"
+    mkdir -p -m 0700 $_dir
+    if openssl genrsa -out $_dir/local.key 2048 >/dev/null 2>&1; then
+        chmod 600 $_dir/local.key
+        openssl rsa -out $_dir/local.pub -in $_dir/local.key -pubout > /dev/null 2>&1
+        echo "done."
+    else
+        echo "failed."
+    fi
+fi
+
+# Make device nodes ############################################################
+echo -n "Making all device nodes... "
+cd $root/dev
+[[ -r ./MAKEDEV ]] || quit "MAKEDEV not found. Can't create device nodes."
+sh MAKEDEV {tun,{s,w}d,tty{0,c},bpf}{0,1,2,3} bpf{4,5,6,7,8,9} random pctr apm \
+    crypto fd{0,1}{,B,C,D,E,F,G,H} pf fd systrace std gpio{,1} 2>/dev/null || quit "failed."
+cd $root/tmplate/var/run/dev
+sh $root/dev/MAKEDEV pty 2>/dev/null || quit "failed."
+for dev in [tp]typ?; do ln -s /var/run/dev/$dev $root/dev/$dev; done
+ln -s /var/run/dev/log $root/dev/log
+echo "done"
+
+# Install boot block ###########################################################
+echo "Installing boot block... "
+cp /usr/mdec/boot $root 2>/dev/null
+/usr/mdec/installboot -v $root/boot /usr/mdec/biosboot $disk
+[[ $? -eq 0 ]] && echo "done." || quit "failed."
+
+# Congratulations! #############################################################
+cat << __EOT
+
+CONGRATULATIONS! Your BowlFish install has been successfully completed!
+Have fun!
+__EOT
+
+exit 0

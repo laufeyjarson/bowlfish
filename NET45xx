@@ -1,0 +1,162 @@
+# OpenBSD config for networking on the Soekris Engineering
+# net45xx embedded systems-
+# chris@nmedia.net
+
+machine         i386            # architecture, used by config; REQUIRED
+
+option          DDB             # in-kernel debugger
+#option         DDB_SAFE_CONSOLE # allow break into ddb during boot
+#makeoptions    DEBUG="-g"      # compile full symbol table
+#makeoptions    PROF="-pg"      # build profiled kernel
+#option         GPROF           # kernel profiling, kgmon(8)
+option          DIAGNOSTIC      # internal consistency checks
+option          KTRACE          # system call tracing, a la ktrace(1)
+#option         KMEMSTATS       # collect malloc(9) statistics
+
+option          CRYPTO          # Cryptographic framework
+
+option          FFS             # UFS
+option          MFS             # Memory FS
+#option         FFS_SOFTUPDATES # Soft updates
+
+option          TCP_SACK        # Selective Acknowledgements for TCP
+#option         TCP_FACK        # Forward Acknowledgements for TCP
+option          TCP_SIGNATURE   # TCP MD5 Signatures, for BGP routing sessions
+
+option          FDESC           # /dev/fd
+option          FIFO            # FIFOs; RECOMMENDED
+option          KERNFS          # /kern
+#option         NULLFS          # loopback file system
+option          PROCFS          # /proc
+#option         UMAPFS          # NULLFS + uid and gid remapping
+
+option          SYSVMSG         # System V-like message queues
+option          SYSVSEM         # System V-like semaphores
+option          SYSVSHM         # System V-like memory sharing
+
+option          INET            # IP + ICMP + TCP + UDP
+option          ALTQ            # ALTQ base
+option          INET6           # IPv6 (needs INET)
+#option         PULLDOWN_TEST   # use m_pulldown for IPv6 packet parsing
+option          IPSEC           # IPsec
+#option         PPP_BSDCOMP     # PPP BSD compression
+#option         PPP_DEFLATE
+
+option          BOOT_CONFIG     # add support for boot -c
+
+option          USER_PCICONF    # user-space PCI configuration
+
+#option         KGDB            # Remote debugger support; exclusive of DDB
+#option         "KGDB_DEVNAME=\"com\"",KGDBADDR=0x2f8,KGDBRATE=9600
+
+#option         DUMMY_NOPS      # speed hack; recommended
+
+maxusers        32              # estimated number of users
+
+config          bsd     root on wd0a
+
+mainbus0 at root
+
+cpu0            at mainbus0
+bios0           at mainbus0
+pcibios0 at bios0 flags 0x0000  # use 0x30 for a total verbose
+
+isa0    at mainbus0
+isa0    at pcib?
+pci*    at mainbus0
+
+option          PCCOMCONSOLE
+option          CONSPEED=19200
+
+option          PCIVERBOSE
+
+pchb*   at pci?                         # PCI-Host bridges
+elansc* at pci?                         # AMD Elan SC520 System Controller
+gpio*   at elansc?
+
+ppb*    at pci?                         # PCI-PCI bridges
+pci*    at ppb?
+pci*    at pchb?
+pcib*   at pci?                         # PCI-ISA bridge
+
+# CardBus+PCMCIA bus support
+cardbus* at cardslot?
+pcmcia* at cardslot?
+cbb*    at pci?
+cardslot* at cbb?
+
+npx0    at isa? port 0xf0 irq 13        # math coprocessor
+isadma0 at isa?
+
+#pcppi0         at isa?
+#sysbeep0       at pcppi?
+
+com0    at isa? port 0x3f8 irq 4        # standard PC serial ports
+com1    at isa? port 0x2f8 irq 3
+
+wdc0    at isa? port 0x1f0 irq 14 flags 0x00
+
+wd*     at wdc? flags 0x0000
+
+sis*    at pci?                 # SiS 900/7016 ethernet
+
+#lmc*   at pci?                 # Lan Media / SBE card
+#san*   at pci?                 # Sangoma PCI AFT card
+#musycc*        at pci?         # Conexant HDLC controller
+#art*   at musycc?
+
+nsphyter* at mii?               # NS and compatible PHYs
+
+# crypto support
+hifn*   at pci?                 # Hi/fn 7xxx crypto card
+
+# Wireless network cards
+wi*     at pci?                 # Intersil Prism MiniPCI wireless card
+ath*    at pci?                 # Atheros MiniPCI wireless card
+wi*     at pcmcia?              # Intersil Prism PCMCIA wireless card
+
+# GPIO ``pin bus'' drivers
+#gpioiic* at gpio? offset 0 mask 0x3    # I2C bus bit-banging
+#iic*   at gpioiic?
+#gpioow* at gpio? offset 0 mask 0x1     # 1-Wire bus bit-banging
+#onewire* at gpioow?
+
+# 1-Wire devices
+#option ONEWIREVERBOSE
+#owid*   at onewire?            # ID
+#owsbm*  at onewire?            # Smart Battery Monitor
+#owtemp* at onewire?            # Temperature
+
+pseudo-device   crypto          1
+pseudo-device   ksyms           1
+pseudo-device   systrace        1
+
+pseudo-device   pf              # packet filter
+pseudo-device   pflog           # pf log if
+pseudo-device   pfsync          # pf sync if
+pseudo-device   pflow           # pflow export if
+
+# clonable devices
+pseudo-device   loop            # network loopback
+pseudo-device   bpfilter        # packet filter
+pseudo-device   trunk           # Trunking support
+pseudo-device   carp            # CARP protocol support
+pseudo-device   sl              # CSLIP
+pseudo-device   ppp             # Async PPP
+pseudo-device   tun             # network tunneling over tty
+pseudo-device   enc             # IPSEC encapsulating interface
+pseudo-device   bridge          # network bridging support
+pseudo-device   vlan            # IEEE 802.1Q VLAN
+pseudo-device   gre             # GRE encapsulation interface
+pseudo-device   gif             # IPv[46] over IPv[46] tunnel (RFC1933)
+
+#pseudo-device  strip   1       # Starmode Radio IP interface
+pseudo-device   pty     32      # pseudo-terminals
+pseudo-device   nmea    1       # NEMA 0183 line discipline
+pseudo-device   msts    1       # MSTS line discipline
+
+# for IPv6
+#pseudo-device  faith   1       # IPv[46] tcp relay translation i/f
+
+pseudo-device   pppoe   1       # PPP over Ethernet (RFC 2516)
+pseudo-device   sppp    1       # Cisco HDLC / PPP

@@ -1,0 +1,293 @@
+stripcom() {
+    local _file="$1" _line
+
+    while read _line ; do
+        _line=${_line%%#*}
+        [ "$_line" ] && echo $_line
+    done < $_file
+}
+
+fill_baddynamic() {
+    local _service="$1" _name _port _srv _junk _ban _i=0
+    local _sysctl="net.inet.${_service}.baddynamic"
+
+    grep "/$_service" /etc/services | {
+        IFS=" 	/"
+        while read _name _port _srv _junk; do
+            [[ "$_srv" = "$_service" ]] || continue;
+            [[ -z "$_ban" ]] && _ban="+$_port" || _ban="$_ban,+$_port"
+
+            if [ $((++_i)) -gt 128 ]; then
+                sysctl $_sysctl=$_ban >/dev/null
+                _ban=""
+                _i=0
+            fi
+        done
+
+        [[ -n "$_ban" ]] && sysctl $_sysctl=$_ban >/dev/null
+    }
+}
+
+stty status '^T'
+
+trap : 2 3
+
+export HOME=/
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+if [ "$1" = "shutdown" ]; then
+    [[ -f /etc/rc.shutdown ]] && . /etc/rc.shutdown
+
+    ifconfig -a | grep '^carp.*:' | cut -f1 -d: | while read if; do
+        ifconfig $if down
+    done
+
+    exit 0
+fi
+
+umount -a >/dev/null 2>&1
+mount -a -t nonfs
+
+. /etc/rc.conf
+
+echo 'setting tty flags'
+ttyflags -a
+
+if [ "$pf" != "NO" ]; then
+    RULES="block all"
+    RULES="$RULES\npass on lo0"
+    RULES="$RULES\npass in proto tcp from any to any port 22 keep state"
+    RULES="$RULES\npass out proto { tcp, udp } from any to any port 53 keep state"
+    RULES="$RULES\npass out inet proto icmp all icmp-type echoreq keep state"
+    if ifconfig lo0 inet6 >/dev/null 2>&1; then
+        RULES="$RULES\npass out inet6 proto icmp6 all icmp6-type neighbrsol"
+        RULES="$RULES\npass in inet6 proto icmp6 all icmp6-type neighbradv"
+        RULES="$RULES\npass out inet6 proto icmp6 all icmp6-type routersol"
+        RULES="$RULES\npass in inet6 proto icmp6 all icmp6-type routeradv"
+    fi
+    RULES="$RULES\npass proto carp keep state (no-sync)"
+    if [[ "`sysctl vfs.mounts.nfs 2>/dev/null`" = *[1-9]* ]]; then
+        RULES="set reassemble yes no-df\n$RULES"
+        RULES="$RULES\npass in proto { tcp, udp } from any port { 111, 2049 } to any"
+        RULES="$RULES\npass out proto { tcp, udp } from any to any port { 111, 2049 }"
+    fi
+    echo $RULES | pfctl -f -
+    pfctl -e
+fi
+
+fill_baddynamic udp
+fill_baddynamic tcp
+
+if [ -f /etc/sysctl.conf ]; then
+    set -- `stripcom /etc/sysctl.conf`
+    while [ $# -ge 1 ] ; do
+        sysctl $1
+        shift
+    done
+fi
+
+echo 'starting network'
+ifconfig -g carp carpdemote 128
+. /etc/netstart
+
+if [ "$pf" != "NO" ]; then
+    [[ -f "$pf_rules" ]] && pfctl -f $pf_rules
+    [[ -f /etc/hostname.pfsync0 ]] && . /etc/netstart pfsync0
+fi
+
+dd if=/dev/urandom of=/var/db/host.random bs=1024 count=64 >/dev/null 2>&1
+chmod 600 /var/db/host.random >/dev/null 2>&1
+
+dmesg >/var/run/dmesg.boot
+
+echo 'starting system logger'
+[[ "$named_flags" != "NO" ]] && syslogd_flags="${syslogd_flags} -a /var/named/dev/log"
+[[ "$httpd_flags" != "-u" ]] && syslogd_flags="${syslogd_flags} -a /var/www/dev/log"
+syslogd $syslogd_flags
+
+if [ "$pf" != "NO" ]; then
+    ifconfig pflog0 create >/dev/null 2>&1
+    if ifconfig pflog0 >/dev/null 2>&1; then
+        ifconfig pflog0 up
+        if [ "$pflogd_flags" != "NO" ]; then
+            pflogd $pflogd_flags
+        fi
+    fi
+fi
+
+if [ "$named_flags" != "NO" ]; then
+    echo 'starting named'
+    named $named_flags
+fi
+
+if [ "$isakmpd_flags" != "NO" ]; then
+    if [ "$sasyncd_flags" != "NO" ]; then
+        isakmpd_flags="-S $isakmpd_flags"
+    fi
+    echo 'starting isakmpd'
+    isakmpd $isakmpd_flags
+fi
+
+if [ "$sasyncd_flags" != "NO" ]; then
+    echo 'starting sasyncd'
+    sasyncd ${sasyncd_flags}
+fi
+
+[[ "$ipsec" != "NO" && -f "$ipsec_rules" ]] && ipsecctl -f $ipsec_rules
+
+echo -n 'starting initial daemons:'
+
+if [ "$rdate_flags" != "NO" ]; then
+    echo -n ' rdate'
+    rdate -s $rdate_flags
+fi
+
+if [ "$timed_flags" != "NO" ]; then
+    echo -n ' timed'
+    timed $timed_flags
+fi
+
+if [ "$ldattach_flags" != "NO" -a -n "$ldattach_flags" ]; then
+    echo -n ' ldattach'
+    ldattach $ldattach_flags
+fi
+
+if [ "$ntpd_flags" != "NO" ]; then
+    echo -n ' ntpd'
+    ntpd $ntpd_flags
+fi
+echo '.'
+
+mount -a
+
+echo -n 'building ps databases:'
+echo -n " dev"
+dev_mkdb
+echo "."
+
+[ -f /etc/rc.securelevel ] && . /etc/rc.securelevel
+if [ "$securelevel" != "" ]; then
+    echo -n 'setting kernel security level: '
+    sysctl kern.securelevel=${securelevel}
+fi
+
+if [ -f /sbin/ldconfig ]; then
+    echo 'creating runtime link editor directory cache.'
+    [[ -d /usr/local/lib ]] && shlib_dirs="/usr/local/lib $shlib_dirs"
+    ldconfig $shlib_dirs
+fi
+
+echo -n starting network daemons:
+
+if [ "$snmpd_flags" != "NO" ]; then
+    echo -n ' snmpd'
+    /usr/sbin/snmpd $snmpd_flags
+fi
+
+if [ "$ripd_flags" != "NO" ]; then
+    echo -n ' ripd'
+    /usr/sbin/ripd $ripd_flags
+fi
+
+if [ "$mrouted_flags" != "NO" ]; then
+    echo -n ' mrouted'
+    mrouted $mrouted_flags
+fi
+
+if [ "$dvmrpd_flags" != "NO" ]; then
+    echo -n ' dvmrpd'
+    /usr/sbin/dvmrpd $dvmrpd_flags
+fi
+
+if [ "$ospfd_flags" != "NO" ]; then
+    echo -n ' ospfd'
+    /usr/sbin/ospfd $ospfd_flags
+fi
+
+if [ "$ospf6d_flags" != "NO" ]; then
+    echo -n ' ospf6d'
+    /usr/sbin/ospf6d $ospf6d_flags
+fi
+
+if [ "$bgpd_flags" != "NO" ]; then
+    echo -n ' bgpd'
+    /usr/sbin/bgpd $bgpd_flags
+fi
+
+if [ "$ifstated_flags" != "NO" ]; then
+    echo -n ' ifstated'
+    ifstated $ifstated_flags
+fi
+
+if [ "$relayd_flags" != "NO" ]; then
+    echo -n ' relayd'
+    /usr/sbin/relayd $relayd_flags
+fi
+
+if [ "$dhcpd_flags" != "NO" -a -f /etc/dhcpd.conf ]; then
+    touch /var/db/dhcpd.leases
+    echo -n ' dhcpd'
+    /usr/sbin/dhcpd $dhcpd_flags
+fi
+
+if [ "$dhcrelay_flags" != "NO" ]; then
+    echo -n ' dhcrelay'
+    /usr/sbin/dhcrelay $dhcrelay_flags
+fi
+
+if [ "$hostapd_flags" != "NO" ]; then
+    echo -n ' hostapd'
+    /usr/sbin/hostapd $hostapd_flags;
+fi
+
+if [ "$sendmail_flags" != "NO" -a -s /etc/mailer.conf ]; then
+    echo -n ' sendmail'
+    ( /usr/sbin/sendmail $sendmail_flags >/dev/null 2>&1 & )
+fi
+
+if [ "$smtpd_flags" != "NO" ]; then
+    echo -n ' smtpd'
+    smtpd $smtpd_flags
+fi
+
+if [ "$httpd_flags" != "NO" ]; then
+    echo -n ' httpd'
+    /usr/sbin/httpd $httpd_flags
+fi
+
+if [ "$ftpproxy_flags" != "NO" ]; then
+    echo -n ' ftp-proxy'
+    /usr/sbin/ftp-proxy $ftpproxy_flags
+fi
+
+if [ "$sshd_flags" != "NO" ]; then
+    echo -n ' sshd'
+    /usr/sbin/sshd $sshd_flags
+fi
+
+echo '.'
+
+[ -f /etc/rc.local ] && . /etc/rc.local
+
+echo -n standard daemons:
+if [ "$sensorsd_flags" != "NO" ]; then
+    echo -n ' sensorsd'
+    /usr/sbin/sensorsd $sensorsd_flags
+fi
+
+if [ "$watchdogd_flags" != "NO" -a -x /usr/sbin/watchdogd ]; then
+    echo -n ' watchdogd'
+    /usr/sbin/watchdogd ${watchdogd_flags}
+fi
+
+echo -n ' cron'
+cron
+
+ifconfig -g carp -carpdemote 128
+
+echo '.'
+
+date
+
+exit 0
+

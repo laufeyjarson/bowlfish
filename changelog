@@ -1,0 +1,99 @@
+              BowlFish - OpenBSD installer for embedded systems
+              -------------------------------------------------
+
+Aug 06, 2011 -- version 2.1
+
+    - Just a maintenance release with minor fixes.
+
+Jun 20, 2010 -- version 2.0
+
+    - Just a maintenance release with very few updates.
+
+Nov 14, 2009 -- version 1.9
+
+    - Updated (well, mostly re-written) the install script in line with the new
+      OpenBSD installer.
+    - Updated the list of the files to install (install.files).
+    - Updated the kernel configuration files.
+
+May 2, 2009 -- version 1.8
+
+    - Added a couple of aliases to root's profile ('rw' and 'ro') to quickly
+      mount the / filesystem read-write o readonly.
+    - Added the creation of the gpio device at installation time
+    - Added the systat utility to install.files.
+
+Nov 13, 2008 -- version 1.7p1
+
+    - Updated the kernel configuration files.
+
+Nov 7, 2008 -- version 1.7
+
+    - Install the default sysctl.conf file instead of a custom one.
+    - Updated the install script according to the changes in OpenBSD 4.4.
+    - Updated the rc script to fill net.inet.(tcp|udp).baddynamic lists.
+
+Jun 2, 2008 -- version 1.6
+
+    - Updated the list of the files to install (install.files) in order to
+      include OpenBSD 4.3's new tools, such as snmpd and relayd.
+    - Imported the new kernel configuration files from flashdist.
+    - Updated the rc script to start the new daemons (snmpd, relayd, ospf6d...)
+    - Fixed the permissions for some files and directories in bowlfish.tgz.
+
+Nov 22, 2007 -- version 1.5
+
+    - Added the possibility of specifying an NTP server during installation
+    - The installation procedure now prompts for the time zone and creates the
+      /etc/localtime file.
+    - Updated the installation script to use the (slightly) new syntax of the
+      newfs(8) command.
+    - Updated the rc script and the kernel config files.
+
+May 19, 2007 -- version 1.4
+
+    - Updated the list of files to install in order to include the new
+      hoststated(8) and ripd(8) daemons and their control programs
+      (hoststatectl(8) and ripctl(8) respectively).
+    - Updated the /etc/rc script to include the new hoststated(8) and ripd(8)
+      tools.
+    - Removed kern.watchdog.auto from /etc/sysctl.conf; no need to explicitely
+      set it to 1: this is the default value!
+    - Now the log socket for syslogd(8) is /var/run/dev/log (set in the new
+      /etc/rc.conf.local file)
+
+Jan 27, 2007 -- version 1.3p1
+
+    - Fixed a little bug in the custom 'rc' script that prevented the system
+      from correctly starting PF.
+
+Nov 12, 2006 -- version 1.3
+
+    - BowlFish now removes the debugging symbols from libraries to save space.
+    - Updated the rc script.
+    - Added a few files in install.files.
+
+Sep 3, 2006 -- version 1.2
+
+    - Added support for GPIO: now you can use gpioctl(8) to have fun with LEDs
+      and LCD displays.
+    - Updated kernel config files.
+    - Added a few files in install.files.
+    - Fixed a bug due to a change in ldd(1) output.
+
+Mar 24, 2006 -- version 1.1
+
+    - The /root directory is now a read-write, in memory, directory, like /var;
+      this will allow the root user to receive e-mail (though not to store it
+      permanently);
+    - The list of files to install from file sets is extracted to a temporary
+      file instead of being passed as arguments; this will allow bowlfish to
+      handle lists of files of any length.
+    - Fixed a little bug in the custom 'rc' script that prevented the system
+      from correctly setting sysctls on boot.
+
+
+Nov 19, 2005 -- version 1.0
+
+    - Initial release
+
