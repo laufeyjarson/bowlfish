@@ -1,2 +1,2 @@
-/dev/wd0a	/	ffs	ro				1 1
+/dev/sd0a	/	ffs	ro				1 1
 swap		/tmp	mfs	rw,nosuid,-P=/tmplate,-s=16384	0 0

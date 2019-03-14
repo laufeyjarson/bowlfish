@@ -4,10 +4,11 @@
 #                                                                              #
 #   install - BowlFish installation script                                     #
 #                                                                              #
-# Version      : 2.1                                                           #
+# Version      :3.0                                                           #
 # Created date : 10 Nov, 2005                                                  #
 # Last update  : 06 Aug, 2011                                                  #
 # Author       : Daniele Mazzocchio (danix@kernel-panic.it)                    #
+# Updated by   : Lou Erickson (lerickson@rdwarf.net)
 #                                                                              #
 # BowlFish is a customized OpenBSD installation script. It is intended to make #
 # OpenBSD fit into the small media (e.g. compact flash cards) that typically   #
@@ -178,8 +179,13 @@ __EOT
 echo "done."
 
 # Write disk label
-echo "e\nESDI\n\n$sec\n$hd\n$sc\n$cyl\n$((sc*cyl))\n\n\nz\na a\n63
-      $((sc*(cyl-1)))\n\nq\ny" | disklabel -E $disk >/dev/null 2>&1
+#echo "e\nESDI\n\n$sec\n$hd\n$sc\n$cyl\n$((sc*cyl))\n\n\nz\na a\n63
+#      $((sc*(cyl-1)))\n\nq\ny" | disklabel -E $disk >/dev/null 2>&1
+#echo "e\nESDI\n\n$sec\n$hd\n$sc\n$cyl\n$((sc*cyl))\n\n\nz\na a\n$((sec+1))
+#      $((sc*(cyl-1)))\n\nq\ny" | disklabel -E $disk 
+
+echo "e\nESDI\n\n$sec\n$hd\n$sc\n$cyl\n\n\n\n\nz\na a\n\n\n\nq\ny" | disklabel -E $disk
+
 
 # Build new filesystem
 newfs -qS 512 /dev/r${disk}a 2>/dev/null || quit "Failed to build new filesystem."
@@ -191,7 +197,7 @@ mount -vo async /dev/${disk}a $root 2>/dev/null || quit "Failed to mount ${disk}
 
 # Copy filesets to disk ########################################################
 echo "\n\nLet's install the sets!"
-sets=$(find_sets bsd base??.tgz etc??.tgz bowlfish.tgz)
+sets=$(find_sets bsd base??.tgz bowlfish.tgz)
 
 # Allow users to install custom filesets
 [[ $(ask_yn "Do you wish to install a custom fileset (site.tgz)?") = "y" ]] && \
@@ -286,6 +292,7 @@ pwd_mkdb -p -d $root/etc $root/etc/master.passwd
 echo "done."
 
 # Generate ssh host keys
+mkdir -p $root/etc/ssh
 echo -n "ssh-keygen: generating new DSA host key... "
 ssh-keygen -q -t dsa -f $root/etc/ssh/ssh_host_dsa_key -N '' && echo "done." || echo "failed."
 echo -n "ssh-keygen: generating new RSA host key... "
@@ -318,19 +325,28 @@ fi
 echo -n "Making all device nodes... "
 cd $root/dev
 [[ -r ./MAKEDEV ]] || quit "MAKEDEV not found. Can't create device nodes."
-sh MAKEDEV {tun,{s,w}d,tty{0,c},bpf}{0,1,2,3} bpf{4,5,6,7,8,9} random pctr apm \
-    crypto fd{0,1}{,B,C,D,E,F,G,H} pf fd systrace std gpio{,1} 2>/dev/null || quit "failed."
+sh MAKEDEV {tun,{s,w}d,tty{0,c}}{0,1,2,3} random pctr apm \
+    fd{0,1}{,B,C,D,E,F,G,H} pf fd std gpio{,1} 2>/dev/null || quit "failed."
 cd $root/tmplate/var/run/dev
 sh $root/dev/MAKEDEV pty 2>/dev/null || quit "failed."
 for dev in [tp]typ?; do ln -s /var/run/dev/$dev $root/dev/$dev; done
 ln -s /var/run/dev/log $root/dev/log
 echo "done"
 
+if [ -e /etc/boot.conf ];
+then
+    cp /etc/boot.conf $root/etc/boot.conf
+fi
+
 # Install boot block ###########################################################
 echo "Installing boot block... "
+cp /usr/mdec/biosboot $root 2>/dev/null
 cp /usr/mdec/boot $root 2>/dev/null
-/usr/mdec/installboot -v $root/boot /usr/mdec/biosboot $disk
+/usr/sbin/installboot -v -r $root $disk /usr/mdec/biosboot /usr/mdec/boot
 [[ $? -eq 0 ]] && echo "done." || quit "failed."
+
+echo Hit enter to let the script end!
+delay=$(ask "Hit ENTER now --> " "whatever")
 
 # Congratulations! #############################################################
 cat << __EOT

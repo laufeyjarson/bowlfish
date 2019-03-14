@@ -10,8 +10,6 @@
 # The list is divided in two sections:                                         #
 # - base: files to extract from the baseXX.tgz fileset, containing the base    #
 #         OpenBSD system.                                                      #
-# - etc : files to extract from the etcXX.tgz fileset, containing all the      #
-#         configuration files in /etc.                                         #
 #                                                                              #
 # You don't need to include any of the library dependencies as they will be    #
 # automatically included during installation.                                  #
@@ -43,13 +41,11 @@
 ./bin/sleep
 ./bin/stty
 ./bin/sync
-./bin/systrace
 ./bin/tar
 ./dev/MAKEDEV
 ./sbin/atactl
 ./sbin/chown
 ./sbin/dhclient
-./sbin/dhclient-script
 ./sbin/dmesg
 ./sbin/fsck
 ./sbin/fsck_ffs
@@ -99,15 +95,12 @@
 ./usr/bin/scp
 ./usr/bin/sed
 ./usr/bin/sftp
-./usr/bin/slogin
 ./usr/bin/ssh
 ./usr/bin/ssh-add
 ./usr/bin/ssh-agent
 ./usr/bin/ssh-keygen
 ./usr/bin/ssh-keyscan
 ./usr/bin/stat
-./usr/bin/sudo
-./usr/bin/sudoedit
 ./usr/bin/systat
 ./usr/bin/telnet
 ./usr/bin/top
@@ -119,17 +112,14 @@
 ./usr/libexec/auth/login_activ
 ./usr/libexec/auth/login_chpass
 ./usr/libexec/auth/login_crypto
-./usr/libexec/auth/login_krb5-or-pwd
 ./usr/libexec/auth/login_lchpass
 ./usr/libexec/auth/login_passwd
 ./usr/libexec/auth/login_reject
 ./usr/libexec/auth/login_skey
 ./usr/libexec/getty
 ./usr/libexec/sftp-server
-./usr/libexec/smtpd/makemap
 ./usr/libexec/ssh-keysign
-./usr/libexec/sudo_noexec.so
-./usr/libexec/tftp-proxy
+./usr/sbin/tftp-proxy
 ./usr/libexec/vi.recover
 ./usr/sbin/arp
 ./usr/sbin/authpf
@@ -147,6 +137,7 @@
 ./usr/sbin/ifstated
 ./usr/sbin/mailwrapper
 ./usr/sbin/ntpd
+./usr/sbin/ntpctl
 ./usr/sbin/ospfctl
 ./usr/sbin/ospfd
 ./usr/sbin/pwd_mkdb
@@ -155,7 +146,6 @@
 ./usr/sbin/relayctl
 ./usr/sbin/ripctl
 ./usr/sbin/ripd
-./usr/sbin/rtadvd
 ./usr/sbin/sasyncd
 ./usr/sbin/sensorsd
 ./usr/sbin/smtpctl
@@ -167,17 +157,10 @@
 ./usr/sbin/tcpdump
 ./usr/sbin/traceroute
 ./usr/sbin/vipw
-./usr/sbin/visudo
-./usr/share/misc/terminfo.db
 ./var/authpf
 ./var/cron/tabs
 ./var/db
 ./var/empty
-./var/tmp/vi.recover
-
-
-[ etc ]
-
 ./etc/bgpd.conf
 ./etc/dhclient.conf
 ./etc/dhcpd.conf
@@ -220,3 +203,6 @@
 ./var/log/messages
 ./var/log/secure
 ./var/run/utmp
+./var/sysmerge
+./var/sysmerge/etc.tgz
+

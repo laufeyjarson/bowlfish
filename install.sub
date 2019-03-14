@@ -198,7 +198,17 @@ function install_file {
                      ftp -o - -V -m file://$_file |    \
                      tar -zxphf - -C $root          \
                          -s!^./var/!./tmplate/var/! \
-                         -s!^./root/!./tmplate/root/! -I $_temp ;;
+                         -s!^./root/!./tmplate/root/! -I $_temp 
+                     echo Testing if $_f is base.tgz
+                     if [[ $_f == ?(x)base*.tgz ]]; then
+                         echo Install sysmerge, too!
+			sh
+                         ftp -D Extracting -Vmo - \
+                         file://$root/tmplate/var/sysmerge/etc.tgz |
+                         tar -zxphf - -C $root \
+                         -s!^./var/!./tmplate/var/! \
+                         -s!^./root/!./tmplate/root/! 
+                     fi ;;
         *          ) ftp -o $root/$_f -V -m file://$_file ;;
     esac
     [[ $? -eq 0 ]] || echo "$_f did not install correctly."
